@@ -71,15 +71,23 @@ if [ ! -d dashboard/node_modules ]; then
   npm run dashboard:install
 fi
 
-# Build if dist is missing or outdated
-if [ ! -f dist/main ] || [ "src" -nt dist/main ] 2>/dev/null; then
+# Build API if dist/main is missing or outdated
+if [ ! -f dist/main.js ] && [ ! -f dist/main ]; then
   echo "==> Building API..."
-  npm run build
+  npm run build 2>&1 || { echo "ERROR: API build failed"; exit 1; }
+  # NestJS outputs to dist/main.js (not dist/main)
 fi
 
-if [ ! -d dashboard/dist ] || [ "dashboard/src" -nt dashboard/dist ] 2>/dev/null; then
+# Handle NestJS output: it creates dist/main.js, not dist/main
+MAIN_FILE="dist/main"
+if [ ! -f "$MAIN_FILE" ] && [ -f "dist/main.js" ]; then
+  MAIN_FILE="dist/main.js"
+fi
+
+# Build dashboard if missing
+if [ ! -d dashboard/dist ]; then
   echo "==> Building dashboard..."
-  npm run dashboard:build
+  npm run dashboard:build 2>&1 || { echo "ERROR: Dashboard build failed"; exit 1; }
 fi
 
 # Stop existing PM2 process if running
@@ -88,10 +96,10 @@ if pm2 describe wa-crm >/dev/null 2>&1; then
   pm2 delete wa-crm
 fi
 
-echo "==> Starting PM2 process: wa-crm"
+echo "==> Starting PM2 process: wa-crm (entry: $MAIN_FILE)"
 
 PUPPETEER_EXECUTABLE_PATH="${PUPPETEER_EXECUTABLE_PATH:-}" \
-pm2 start dist/main --name wa-crm
+pm2 start "$MAIN_FILE" --name wa-crm
 
 pm2 save
 
